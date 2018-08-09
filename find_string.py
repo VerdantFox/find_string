@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """Find a given string in any file in this branch (can limit file types and directories searched)
 
-usage: ./bin/find_string_in_branch "<string>" [-e <file extension limiter>] [-d <directory limiter>] [-i] [-c]
+usage: ./bin/find_string_in_branch "<string>" [-e <file extension limiter>] [-d <directory limiter>] [-i] [-c] [-s]
 
 Created by: Teddy Williams
 Date: 6/29/18
+Last updated: 8/9/18
 
 Arguments:
     <string>: This is the string that is searched for across all directories/files
@@ -20,7 +21,10 @@ Optional Arguments (can be combined):
         example:                        find_string.py "interesting string" -i
 
     -c:                                 make search case insensitive
-        example:                        find_string.py "interesting string" -i
+        example:                        find_string.py "interesting string" -c
+
+    -s:                                 will show the line containing found string
+        example:                        find_string.py "interesting string" -s
 
     --help                              Display help message
         example:                        find_string.py -h
@@ -31,7 +35,7 @@ import os
 import click
 
 
-options_string = '[-e <file extension limiter>] [-d <directory limiter>] [-i] [-c]'
+options_string = '[-e <file extension limiter>] [-d <directory limiter>] [-i] [-c] [-s]'
 
 
 @click.command(options_metavar=options_string)
@@ -40,7 +44,8 @@ options_string = '[-e <file extension limiter>] [-d <directory limiter>] [-i] [-
 @click.option('-d', '--directory', 'directory', default='', metavar='<relative directory>')
 @click.option('-i', '--ignore-comments', 'ignore_comments', is_flag=True)
 @click.option('-c', '--case-insensitive', 'case_insensitive', is_flag=True)
-def find_string(string_to_find, extension, directory, ignore_comments, case_insensitive):
+@click.option('-s', '--show-line', 'show_line', is_flag=True)
+def find_string(string_to_find, extension, directory, ignore_comments, case_insensitive, show_line):
     """Find a string in file system relative to current working directory"""
     string_to_find = str(string_to_find)
     extension = str(extension)
@@ -63,7 +68,7 @@ def find_string(string_to_find, extension, directory, ignore_comments, case_inse
 
     traverse_files(dir_path, string_to_find, extension,
                    ignore_comments, case_insensitive, file_line_dict)
-    print_output(file_line_dict, string_to_find, root_dir_path)
+    print_output(file_line_dict, string_to_find, root_dir_path, show_line)
     return file_line_dict
 
 
@@ -108,9 +113,9 @@ def search_file(file_path, string_to_find, ignore_comments, case_insensitive, fi
                             if "#" in line:
                                 pre_comment_line = line.split('#')[0]
                                 if string_to_find in pre_comment_line:
-                                    add_to_dictionary(file_path, line_count, file_line_dict)
+                                    add_to_dictionary(file_path, line, line_count, file_line_dict)
                             else:
-                                add_to_dictionary(file_path, line_count, file_line_dict)
+                                add_to_dictionary(file_path, line, line_count, file_line_dict)
                         if '"""' in line and in_comment is True:
                             in_comment = False
                     elif extension == '.xqy':
@@ -118,26 +123,26 @@ def search_file(file_path, string_to_find, ignore_comments, case_insensitive, fi
                             in_comment = True
                             pre_comment_line = line.split('(:')[0]
                             if string_to_find in pre_comment_line:
-                                add_to_dictionary(file_path, line_count, file_line_dict)
+                                add_to_dictionary(file_path, line, line_count, file_line_dict)
                         if not in_comment:
-                            add_to_dictionary(file_path, line_count, file_line_dict)
+                            add_to_dictionary(file_path, line, line_count, file_line_dict)
                         if ':)' in line:
                             in_comment = False
                     else:
-                        add_to_dictionary(file_path, line_count, file_line_dict)
+                        add_to_dictionary(file_path, line, line_count, file_line_dict)
                 else:
-                    add_to_dictionary(file_path, line_count, file_line_dict)
+                    add_to_dictionary(file_path, line, line_count, file_line_dict)
 
 
-def add_to_dictionary(file_path, line_count, file_line_dict):
+def add_to_dictionary(file_path, line, line_count, file_line_dict):
     """ Add the line file and line of string occurrence to specified dictionary"""
     if file_path in file_line_dict:
-        file_line_dict[file_path].append(line_count)
+        file_line_dict[file_path].append((line_count, line))
     else:
-        file_line_dict[file_path] = [line_count]
+        file_line_dict[file_path] = [(line_count, line)]
 
 
-def print_output(file_line_dict, string, root_dir_path):
+def print_output(file_line_dict, string, root_dir_path, show_line):
     if len(file_line_dict) == 0:
         click.echo('\n"{}" not found\n'.format(string))
     else:
@@ -145,8 +150,19 @@ def print_output(file_line_dict, string, root_dir_path):
         ordered_file_line_dict = OrderedDict(sorted(file_line_dict.items()))
         click.echo('\n{} files with "{}" found:\n'.format(len(file_line_dict), string))
         for index, key in enumerate(ordered_file_line_dict):
-            click.echo('{}. {} -> lines: {}'.format(
-                index + 1, key[len(root_dir_path)+1:], ordered_file_line_dict[key]))
+            if show_line:
+                click.echo('{}. {}:'.format(index + 1, key[len(root_dir_path)+1:],))
+                # for i, line_number, line in enumerate(ordered_file_line_dict[key]):
+                for line_number, line in ordered_file_line_dict[key]:
+                    line = line.strip('\t').strip('\n').strip(' ')
+                    click.echo('\tline {line_number}: {line}'.format(
+                        line_number=line_number, line=line))
+            else:
+                click.echo('{}. {} -> lines: {}'.format(
+                    index + 1,
+                    key[len(root_dir_path)+1:],
+                    [ordered_file_line_dict[key][i][0] for i, j in enumerate(ordered_file_line_dict[key])],
+                ))
         click.echo()
 
 
