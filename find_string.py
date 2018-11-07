@@ -31,7 +31,10 @@ Optional Arguments (can be combined):
 """
 from __future__ import print_function
 from collections import OrderedDict
+import re
 import os
+import string
+
 import click
 
 
@@ -40,20 +43,32 @@ options_string = '[-e <file extension limiter>] [-d <directory limiter>] [-i] [-
 
 @click.command(options_metavar=options_string)
 @click.argument('string_to_find', nargs=1, metavar="'<string to find>'")
-@click.option('-e', '--extension', 'extension', default='', metavar='<file extension>')
-@click.option('-d', '--directory', 'directory', default='', metavar='<relative directory>')
-@click.option('-i', '--ignore-comments', 'ignore_comments', is_flag=True)
-@click.option('-c', '--case-insensitive', 'case_insensitive', is_flag=True)
-@click.option('-s', '--show-line', 'show_line', is_flag=True)
-def find_string(string_to_find, extension, directory, ignore_comments, case_insensitive, show_line):
+@click.option('-e', '--extension', 'extension',
+              default='', metavar='<file extension>',
+              help="File extension to search on.")
+@click.option('-d', '--directory', 'directory',
+              default='', metavar='<relative directory>',
+              help="Directory to search for string in.")
+@click.option('-i', '--ignore-comments', 'ignore_comments',
+              is_flag=True, help="If flagged, ignore comment strings.")
+@click.option('-c', '--case-insensitive', 'case_insensitive',
+              is_flag=True, help="If flagged search case_insensitive")
+@click.option('-s', '--show-line', 'show_line',
+              is_flag=True, help="If flagged, show line string is found on.")
+def find_string(
+        string_to_find, extension, directory,
+        ignore_comments, case_insensitive, show_line
+):
     """Find a string in file system relative to current working directory"""
-    string_to_find = str(string_to_find)
+    string_to_find = r'{}'.format(string_to_find)
     extension = str(extension)
     directory = str(directory)
 
     # prep args
     if extension != '' and extension[0] != '.':
-        raise click.BadParameter("'{}' is not a recognized file extension. (example extension = '.py')".format(extension))
+        raise click.BadParameter(
+            "'{}' is not a recognized file extension. "
+            "(example extension = '.py')".format(extension))
     if directory != '':
         directory = '/' + directory.strip('/')
     # Create dict to hold the string's file names and line locations
@@ -64,7 +79,8 @@ def find_string(string_to_find, extension, directory, ignore_comments, case_inse
     dir_path = root_dir_path + directory
     # Check if directory exists
     if not os.path.isdir(dir_path):
-        raise click.BadParameter("The directory {} does not exist!".format(dir_path))
+        raise click.BadParameter(
+            "The directory {} does not exist!".format(dir_path))
 
     traverse_files(dir_path, string_to_find, extension,
                    ignore_comments, case_insensitive, file_line_dict)
@@ -83,8 +99,14 @@ def traverse_files(dir_path, string_to_find, extension, ignore_comments,
                             case_insensitive, file_line_dict, extension)
 
 
-def search_file(file_path, string_to_find, ignore_comments, case_insensitive, file_line_dict, extension):
-    """ Search through files to find string instances. Add file name and line numbers where string was found """
+def search_file(
+        file_path, string_to_find, ignore_comments,
+        case_insensitive, file_line_dict, extension
+):
+    """ Search through files to find string instances.
+
+    Add file name and line numbers where string was found
+    """
     if ignore_comments and extension == '':
         split_filename = file_path.split('/')[-1].split('.')
         if len(split_filename) > 1:
@@ -104,7 +126,7 @@ def search_file(file_path, string_to_find, ignore_comments, case_insensitive, fi
             if case_insensitive:
                 string_to_find = string_to_find.lower()
                 line = line.lower()
-            if string_to_find in line:
+            if re.search(string_to_find, line):
                 if ignore_comments:
                     if extension == '.py' or extension == '.sh':
                         if '"""' in line and in_comment is False:
@@ -112,26 +134,65 @@ def search_file(file_path, string_to_find, ignore_comments, case_insensitive, fi
                         if not in_comment:
                             if "#" in line:
                                 pre_comment_line = line.split('#')[0]
-                                if string_to_find in pre_comment_line:
-                                    add_to_dictionary(file_path, line, line_count, file_line_dict)
+                                if re.search(string_to_find, pre_comment_line):
+                                    add_to_dictionary(
+                                        file_path=file_path,
+                                        line=color_line(string_to_find, line),
+                                        line_count=line_count,
+                                        file_line_dict=file_line_dict
+                                    )
                             else:
-                                add_to_dictionary(file_path, line, line_count, file_line_dict)
+                                add_to_dictionary(
+                                    file_path=file_path,
+                                    line=color_line(string_to_find, line),
+                                    line_count=line_count,
+                                    file_line_dict=file_line_dict
+                                )
                         if '"""' in line and in_comment is True:
                             in_comment = False
                     elif extension == '.xqy':
                         if '(:' in line:
                             in_comment = True
                             pre_comment_line = line.split('(:')[0]
-                            if string_to_find in pre_comment_line:
-                                add_to_dictionary(file_path, line, line_count, file_line_dict)
+                            if re.search(string_to_find, pre_comment_line):
+                                add_to_dictionary(
+                                    file_path=file_path,
+                                    line=color_line(string_to_find, line),
+                                    line_count=line_count,
+                                    file_line_dict=file_line_dict
+                                )
                         if not in_comment:
-                            add_to_dictionary(file_path, line, line_count, file_line_dict)
+                            add_to_dictionary(
+                                file_path=file_path,
+                                line=color_line(string_to_find, line),
+                                line_count=line_count,
+                                file_line_dict=file_line_dict
+                            )
                         if ':)' in line:
                             in_comment = False
                     else:
-                        add_to_dictionary(file_path, line, line_count, file_line_dict)
+                        add_to_dictionary(
+                            file_path=file_path,
+                            line=color_line(string_to_find, line),
+                            line_count=line_count,
+                            file_line_dict=file_line_dict
+                        )
                 else:
-                    add_to_dictionary(file_path, line, line_count, file_line_dict)
+                    add_to_dictionary(
+                        file_path=file_path,
+                        line=color_line(string_to_find, line),
+                        line_count=line_count,
+                        file_line_dict=file_line_dict
+                    )
+
+
+def color_line(string_to_find, line):
+    """ANSI color the string to find within the line"""
+    matches = re.findall(string_to_find, line)
+    for match in matches:
+        color_match = click.style(match, fg='green')
+        line = string.replace(line, match, color_match)
+    return line
 
 
 def add_to_dictionary(file_path, line, line_count, file_line_dict):
@@ -142,26 +203,30 @@ def add_to_dictionary(file_path, line, line_count, file_line_dict):
         file_line_dict[file_path] = [(line_count, line)]
 
 
-def print_output(file_line_dict, string, root_dir_path, show_line):
+def print_output(file_line_dict, found_string, root_dir_path, show_line):
+    """Prints out the files/lines to console"""
     if len(file_line_dict) == 0:
-        click.echo('\n"{}" not found\n'.format(string))
+        click.echo('\n"{}" not found\n'.format(found_string))
     else:
         # Order our dictionary alphabetically by document names
         ordered_file_line_dict = OrderedDict(sorted(file_line_dict.items()))
-        click.echo('\n{} files with "{}" found:\n'.format(len(file_line_dict), string))
+        click.echo('\n{} files with "{}" found:\n'.format(
+            len(file_line_dict), found_string))
         for index, key in enumerate(ordered_file_line_dict):
             if show_line:
-                click.echo('{}. {}:'.format(index + 1, key[len(root_dir_path)+1:],))
-                # for i, line_number, line in enumerate(ordered_file_line_dict[key]):
+                click.echo('{}. {}:'.format(
+                    index + 1, key[len(root_dir_path)+1:],))
                 for line_number, line in ordered_file_line_dict[key]:
                     line = line.strip('\t').strip('\n').strip(' ')
                     click.echo('\tline {line_number}: {line}'.format(
-                        line_number=line_number, line=line))
+                        line_number=click.style(str(line_number), fg='cyan'),
+                        line=line))
             else:
                 click.echo('{}. {} -> lines: {}'.format(
                     index + 1,
                     key[len(root_dir_path)+1:],
-                    [ordered_file_line_dict[key][i][0] for i, j in enumerate(ordered_file_line_dict[key])],
+                    [ordered_file_line_dict[key][i][0]
+                     for i, j in enumerate(ordered_file_line_dict[key])],
                 ))
         click.echo()
 
